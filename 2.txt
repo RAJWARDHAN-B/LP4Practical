@@ -1,0 +1,129 @@
+# 1. IMPORT LIBRARIES
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+from tensorflow.keras.optimizers import Adam
+
+
+# 2. LOAD DATASET
+
+# A. CIFAR10
+train_data = pd.read_csv('/cifar10_train.csv')
+test_data = pd.read_csv('/cifar10_test.csv')
+
+# B. Handwritten MNIST
+# train_data = pd.read_csv('/mnist_train.csv')
+# test_data = pd.read_csv('/mnist_test.csv')
+
+# C. Sign Language MNIST
+# train_data = pd.read_csv('/sign_mnist_train.csv')
+# test_data = pd.read_csv('/sign_mnist_test.csv')
+
+
+# 3. SEPARATE FEATURES AND LABELS
+
+X_train = train_data.iloc[:, 1:].values
+y_train = train_data.iloc[:, 0].values
+
+X_test = test_data.iloc[:, 1:].values
+y_test = test_data.iloc[:, 0].values
+
+
+# 4. PREPROCESSING
+
+# A. CIFAR10 (32x32 RGB images)
+X_train = X_train.reshape(-1, 32, 32, 3)
+X_test = X_test.reshape(-1, 32, 32, 3)
+
+# B. Handwritten MNIST (28x28 grayscale images)
+# X_train = X_train.reshape(-1, 28, 28, 1)
+# X_test = X_test.reshape(-1, 28, 28, 1)
+
+# C. Sign Language MNIST (28x28 grayscale images)
+# X_train = X_train.reshape(-1, 28, 28, 1)
+# X_test = X_test.reshape(-1, 28, 28, 1)
+
+# Normalize pixel values
+X_train = X_train / 255.0
+X_test = X_test / 255.0
+
+
+# 5. DEFINE CNN MODEL ARCHITECTURE
+
+model = Sequential([
+    Conv2D(32, (3, 3), activation='relu',
+           input_shape=X_train.shape[1:]),
+
+    MaxPooling2D((2, 2)),
+
+    Conv2D(64, (3, 3), activation='relu'),
+
+    MaxPooling2D((2, 2)),
+
+    Flatten(),
+
+    Dense(128, activation='relu'),
+
+    Dense(10, activation='softmax')
+])
+
+# For Sign Language MNIST, replace the output layer above with:
+# Dense(25, activation='softmax')
+
+
+# 6. COMPILE MODEL
+
+model.compile(
+    optimizer=Adam(),
+    loss='sparse_categorical_crossentropy',
+    metrics=['accuracy']
+)
+
+
+# 7. TRAIN MODEL
+
+history = model.fit(
+    X_train, y_train,
+    epochs=10,
+    batch_size=64,
+    validation_data=(X_test, y_test)
+)
+
+
+# 8. ESTIMATE MODEL PERFORMANCE
+
+loss, accuracy = model.evaluate(X_test, y_test)
+
+print("Test Loss:", loss)
+print("Test Accuracy:", accuracy)
+
+
+# 9. PLOT ACCURACY AND LOSS
+
+plt.figure(figsize=(12, 5))
+
+# Training and validation loss
+plt.subplot(1, 2, 1)
+plt.plot(history.history['loss'], label='Training Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+plt.title('Model Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+
+# Training and validation accuracy
+plt.subplot(1, 2, 2)
+plt.plot(history.history['accuracy'], label='Training Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+plt.title('Model Accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+
+plt.tight_layout()
+plt.show()

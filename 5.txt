@@ -1,0 +1,305 @@
+# ============================================================
+# 1. IMPORT LIBRARIES
+# ============================================================
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import tensorflow as tf
+
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, Flatten, Dropout, Input
+from tensorflow.keras.applications import VGG16, ResNet50
+from tensorflow.keras.optimizers import Adam
+
+
+# ============================================================
+# 2. SET PARAMETERS
+# ============================================================
+
+IMG_SIZE = (224, 224)
+BATCH_SIZE = 32
+
+
+# ============================================================
+# 3. LOAD DATASET
+# ============================================================
+
+# ------------------- 5A. CALTECH101 -------------------
+
+train_ds = tf.keras.utils.image_dataset_from_directory(
+    '/caltech101/101_ObjectCategories',
+    validation_split=0.2,
+    subset='training',
+    seed=42,
+    image_size=IMG_SIZE,
+    batch_size=BATCH_SIZE
+)
+
+test_ds = tf.keras.utils.image_dataset_from_directory(
+    '/caltech101/101_ObjectCategories',
+    validation_split=0.2,
+    subset='validation',
+    seed=42,
+    image_size=IMG_SIZE,
+    batch_size=BATCH_SIZE
+)
+
+
+# ------------------- 5B. INTEL DATASET -------------------
+
+# train_ds = tf.keras.utils.image_dataset_from_directory(
+#     '/intel/seg_train/seg_train',
+#     image_size=IMG_SIZE,
+#     batch_size=BATCH_SIZE
+# )
+
+# test_ds = tf.keras.utils.image_dataset_from_directory(
+#     '/intel/seg_test/seg_test',
+#     image_size=IMG_SIZE,
+#     batch_size=BATCH_SIZE
+# )
+
+
+# ------------------- 5C. FASHION MNIST -------------------
+
+# train_data = pd.read_csv('/fashion_train.csv')
+# test_data = pd.read_csv('/fashion_test.csv')
+
+# X_train = train_data.iloc[:, 1:].values
+# y_train = train_data.iloc[:, 0].values
+
+# X_test = test_data.iloc[:, 1:].values
+# y_test = test_data.iloc[:, 0].values
+
+# X_train = X_train.reshape(-1, 28, 28, 1)
+# X_test = X_test.reshape(-1, 28, 28, 1)
+
+# Convert grayscale images to RGB
+# X_train = np.repeat(X_train, 3, axis=-1)
+# X_test = np.repeat(X_test, 3, axis=-1)
+
+# Convert images to TensorFlow datasets
+# train_ds = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+# test_ds = tf.data.Dataset.from_tensor_slices((X_test, y_test))
+
+# Resize images to 224x224
+# train_ds = train_ds.map(
+#     lambda x, y: (tf.image.resize(x, IMG_SIZE), y)
+# ).batch(BATCH_SIZE)
+
+# test_ds = test_ds.map(
+#     lambda x, y: (tf.image.resize(x, IMG_SIZE), y)
+# ).batch(BATCH_SIZE)
+
+
+# ============================================================
+# 4. GET NUMBER OF CLASSES
+# ============================================================
+
+# For Caltech101 and Intel
+num_classes = len(train_ds.class_names) if hasattr(train_ds, 'class_names') else 10
+
+# For Fashion MNIST
+# num_classes = 10
+
+
+# ============================================================
+# 5. CHOOSE PRE-TRAINED MODEL
+# ============================================================
+
+# OPTION 1: VGG16 WITH IMAGENET WEIGHTS
+
+base_model = VGG16(
+    weights='imagenet',
+    include_top=False,
+    input_shape=(224, 224, 3)
+)
+
+
+# OPTION 2: VGG16 WITH PROVIDED .H5 WEIGHTS FILE
+# If your college provides:
+# vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5
+#
+# Comment OPTION 1 and uncomment this:
+
+# base_model = VGG16(
+#     weights=None,
+#     include_top=False,
+#     input_shape=(224, 224, 3)
+# )
+
+# base_model.load_weights(
+#     '/path/vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5'
+# )
+
+
+# OPTION 3: RESNET50
+# Comment OPTION 1 and uncomment this:
+
+# base_model = ResNet50(
+#     weights='imagenet',
+#     include_top=False,
+#     input_shape=(224, 224, 3)
+# )
+
+# IMPORTANT:
+# Use the matching preprocessing function for the selected model.
+
+from tensorflow.keras.applications.vgg16 import preprocess_input
+preprocess_fn = preprocess_input
+
+# If using ResNet50, use this instead:
+# from tensorflow.keras.applications.resnet50 import preprocess_input
+# preprocess_fn = preprocess_input
+
+
+# ============================================================
+# 6. FREEZE BASE MODEL AND ADD CUSTOM LAYERS
+# ============================================================
+
+base_model.trainable = False
+
+inputs = Input(shape=(224, 224, 3))
+
+x = tf.keras.layers.Lambda(
+    lambda img: preprocess_fn(img)
+)(inputs)
+
+x = base_model(x, training=False)
+
+x = Flatten()(x)
+
+x = Dense(256, activation='relu')(x)
+
+x = Dropout(0.5)(x)
+
+outputs = Dense(num_classes, activation='softmax')(x)
+
+model = Model(inputs, outputs)
+
+
+# ============================================================
+# 7. COMPILE MODEL
+# ============================================================
+
+model.compile(
+    optimizer=Adam(learning_rate=0.001),
+    loss='sparse_categorical_crossentropy',
+    metrics=['accuracy']
+)
+
+model.summary()
+
+
+# ============================================================
+# 8. TRAIN MODEL
+# ============================================================
+
+history = model.fit(
+    train_ds,
+    epochs=10,
+    validation_data=test_ds
+)
+
+
+# ============================================================
+# 9. COMPUTE LOSS AND EVALUATE MODEL
+# ============================================================
+
+loss, accuracy = model.evaluate(test_ds)
+
+print("Test Loss:", loss)
+print("Test Accuracy:", accuracy)
+
+
+# ============================================================
+# 10. VISUALIZE PREDICTIONS
+# ============================================================
+
+images, labels = next(iter(test_ds))
+
+predictions = model.predict(images)
+
+predicted_labels = np.argmax(predictions, axis=1)
+
+plt.figure(figsize=(12, 8))
+
+for i in range(9):
+    plt.subplot(3, 3, i + 1)
+
+    plt.imshow(images[i].numpy().astype("uint8"))
+
+    plt.title(
+        f"Actual: {labels[i].numpy()}\n"
+        f"Predicted: {predicted_labels[i]}"
+    )
+
+    plt.axis('off')
+
+plt.tight_layout()
+plt.show()
+
+
+# ============================================================
+# 11. FINE-TUNE THE MODEL
+# ============================================================
+
+base_model.trainable = True
+
+# Freeze initial layers and unfreeze last 4 layers
+for layer in base_model.layers[:-4]:
+    layer.trainable = False
+
+model.compile(
+    optimizer=Adam(learning_rate=0.0001),
+    loss='sparse_categorical_crossentropy',
+    metrics=['accuracy']
+)
+
+history_fine = model.fit(
+    train_ds,
+    epochs=5,
+    validation_data=test_ds
+)
+
+
+# Evaluate fine-tuned model
+
+loss, accuracy = model.evaluate(test_ds)
+
+print("Fine-tuned Test Loss:", loss)
+print("Fine-tuned Test Accuracy:", accuracy)
+
+
+# ============================================================
+# 12. PLOT TRAINING LOSS AND ACCURACY
+# ============================================================
+
+plt.figure(figsize=(12, 5))
+
+# Training and validation loss
+plt.subplot(1, 2, 1)
+
+plt.plot(history.history['loss'], label='Training Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+
+plt.title('Model Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+
+
+# Training and validation accuracy
+plt.subplot(1, 2, 2)
+
+plt.plot(history.history['accuracy'], label='Training Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+
+plt.title('Model Accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+
+plt.tight_layout()
+plt.show()
